@@ -1,0 +1,24 @@
+spring:
+  resources:
+      static-locations: file:${ftp.home-dir}
+  mvc:
+    static-path-pattern: /res/**
+  redis:
+    host: localhot
+    port: 6370
+server:
+  host: localhost
+  port: 8080
+logging:
+  level:
+    root: info
+    com.ajavac: debug
+  file: spring.log
+ftp:
+  port: 2121
+  passive-ports:
+  max-login: 0
+  max-threads: 0
+  username: admin
+  password: admin
+  home-dir: res/
