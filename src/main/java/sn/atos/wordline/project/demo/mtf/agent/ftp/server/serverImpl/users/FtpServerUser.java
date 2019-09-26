@@ -1,0 +1,38 @@
+/*
+ * To change this license header, choose License Headers in Project Properties.
+ * To change this template file, choose Tools | Templates
+ * and open the template in the editor.
+ */
+package sn.atos.wordline.project.demo.mtf.agent.ftp.server.serverImpl.users;
+
+import java.util.ArrayList;
+import java.util.List;
+import org.apache.ftpserver.ftplet.Authority;
+import org.apache.ftpserver.usermanager.impl.BaseUser;
+import org.apache.ftpserver.usermanager.impl.ConcurrentLoginPermission;
+import org.apache.ftpserver.usermanager.impl.TransferRatePermission;
+import org.apache.ftpserver.usermanager.impl.WritePermission;
+
+/**
+ *
+ * @author A746054
+ */
+public class FtpServerUser extends BaseUser {
+   public FtpServerUser(String name, String password, boolean mayWrite, int maxConcurrentLogins) {
+		setName(name);
+		setPassword(password);
+		setEnabled(true);
+		setHomeDirectory("");
+
+		List<Authority> permissions = new ArrayList<>();
+
+		if (mayWrite) {
+			permissions.add(new WritePermission());
+		}
+
+		permissions.add(new ConcurrentLoginPermission(maxConcurrentLogins, maxConcurrentLogins));
+		permissions.add(new TransferRatePermission(0, 0));
+
+		setAuthorities(permissions);
+	} 
+}

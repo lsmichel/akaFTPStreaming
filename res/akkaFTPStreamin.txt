@@ -1,0 +1,118 @@
+package com.example.demo.FTPserver.AkkaSpringExtentions;
+
+import akka.Done;
+import akka.actor.ActorSystem;
+import akka.stream.ActorMaterializer;
+import akka.stream.IOResult;
+import akka.stream.Materializer;
+import akka.stream.alpakka.ftp.FtpCredentials;
+import akka.stream.alpakka.ftp.javadsl.Ftp;
+import akka.stream.alpakka.ftp.FtpSettings;
+import akka.stream.javadsl.Sink;
+import akka.stream.javadsl.Source;
+import akka.util.ByteString;
+import java.io.PrintWriter;
+import org.apache.commons.net.PrintCommandListener;
+import org.apache.commons.net.ftp.FTPClient;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.config.ConfigurableBeanFactory;
+import org.springframework.context.annotation.Scope;
+import org.springframework.stereotype.Component;
+
+import java.net.InetAddress;
+import java.net.UnknownHostException;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.concurrent.CompletionStage;
+import java.util.concurrent.TimeUnit;
+import redis.clients.jedis.Jedis;
+
+@Component
+@Scope(ConfigurableBeanFactory.SCOPE_PROTOTYPE)
+public class FTPConsumerService {
+	@Autowired
+    private static ActorSystem system;
+	public static HashMap<String , Integer> ConsumeFTP() throws UnknownHostException, Exception {
+       // ActorSystem system = ActorSystem.create("FTPTest");
+        ActorMaterializer materializer = ActorMaterializer.create(system);
+        FtpCredentials credentials = new FtpCredentials() {
+            @Override
+            public String username() {
+                return "admin";
+            }
+            
+            @Override
+            public String password() {
+                return "admin";
+            }
+        };
+        FtpSettings ftpSettings
+                = FtpSettings.create(InetAddress.getByName("localhost"))
+                        .withPort(2121)
+                        .withCredentials(credentials)
+                        .withBinary(true)
+                        .withPassiveMode(true)
+                        .withConfigureConnectionConsumer(
+                                (FTPClient ftpClient) -> {
+                                    ftpClient.addProtocolCommandListener(
+                                            new PrintCommandListener(new PrintWriter(System.out), true));
+                                });
+        HashMap<String , Integer> res = new HashMap<String , Integer>(); 
+        HashMap<String , List<byte[]>> result = listFiles(".", ftpSettings,  materializer);
+        for(String key:result.keySet()) {
+        	List<byte[]>  entry = result.get(key); 
+        	res.put(key,result.get(key).size() );
+        }
+        printResult(result);
+        return res;
+        //system.terminate(); 
+    }
+    
+    public static HashMap<String , List<byte[]>>  listFiles(String basePath, FtpSettings settings, Materializer materializer)
+      throws Exception {
+    HashMap<String , List<byte[]>> result = new HashMap<String , List<byte[]>>();
+    Ftp.ls(basePath, settings)
+        .runForeach(ftpFile -> 
+          {   
+              if(!ftpFile.isDirectory()) {
+                  List<byte[]> resultint = new ArrayList<byte[]>();
+                  Sink<ByteString, CompletionStage<Done>> printlnSink =
+                  Sink.<ByteString>foreach(chunk -> {
+                      resultint.add(chunk.toArray());
+                      result.put(ftpFile.path(), resultint);
+                  });
+                 Source<ByteString, CompletionStage<IOResult>>  promise = 
+                         retrieveFromPath(ftpFile.path() ,settings );
+                 CompletionStage<IOResult> ioResult = promise.to(printlnSink).run(materializer);
+                 ioResult.toCompletableFuture().get();
+              }
+           }, materializer).toCompletableFuture().get();
+         return result;
+    }
+    public static Source<ByteString, CompletionStage<IOResult>> retrieveFromPath(
+      String path, FtpSettings settings) throws Exception {
+      return Ftp.fromPath(path, settings);
+  }
+  public static void printResult(HashMap<String , List<byte[]>> result){
+      if(result !=null){
+          
+          for(String key:result.keySet()){
+              int i= 0;
+              HashMap<byte[] , byte[]> obj = new HashMap<byte[] , byte[]>();
+              
+              for(byte[] bloc:result.get(key)){
+                 obj.put((key+i).getBytes(), bloc);
+                 Jedis jedis = new Jedis("localhost" , 6370);
+                 jedis.hmset(("storage"+key).getBytes(), obj);
+                 List<byte[]> blocstored = jedis.hmget(("storage"+key).getBytes(), (key+i).getBytes());
+                 
+                 i++;
+              }
+              i=0;
+              
+              System.out.println("new entry >>>>>>>>>>>>>>>>>>>>>> "+key);
+          }
+      }
+  }
+}
